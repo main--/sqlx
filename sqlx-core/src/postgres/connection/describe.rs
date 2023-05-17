@@ -185,20 +185,27 @@ impl PgConnection {
 
     fn fetch_type_by_oid(&mut self, oid: Oid) -> BoxFuture<'_, Result<PgTypeInfo, Error>> {
         Box::pin(async move {
-            let (name, typ_type, category, relation_id, element, base_type): (String, i8, i8, Oid, Oid, Oid) = query_as(
-                "SELECT typname, typtype, typcategory, typrelid, typelem, typbasetype FROM pg_catalog.pg_type WHERE oid = $1",
+            // older versions (and redshift)
+            let has_typcategory: bool = query_scalar("select count(1) = 1 from pg_attribute a, pg_class c, pg_namespace n where attrelid = c.oid and c.relname = 'pg_type' and a.attname = 'typcategory' and n.nspname = 'pg_catalog' and n.oid = c.relnamespace").fetch_one(&mut *self).await?;
+
+            let typcategory = match has_typcategory {
+                true => "typcategory",
+                false => "NULL as typcategory",
+            };
+            let (name, typ_type, category, relation_id, element, base_type): (String, i8, Option<i8>, Oid, Oid, Oid) = query_as(
+                &format!("SELECT typname, typtype, {typcategory}, typrelid, typelem, typbasetype FROM pg_catalog.pg_type WHERE oid = $1"),
             )
             .bind(oid)
             .fetch_one(&mut *self)
             .await?;
 
             let typ_type = TypType::try_from(typ_type as u8);
-            let category = TypCategory::try_from(category as u8);
+            let category = category.map(|category| TypCategory::try_from(category as u8));
 
             match (typ_type, category) {
                 (Ok(TypType::Domain), _) => self.fetch_domain_by_oid(oid, base_type, name).await,
 
-                (Ok(TypType::Base), Ok(TypCategory::Array)) => {
+                (Ok(TypType::Base), Some(Ok(TypCategory::Array)) | None) => {
                     Ok(PgTypeInfo(PgType::Custom(Arc::new(PgCustomType {
                         kind: PgTypeKind::Array(
                             self.maybe_fetch_type_info_by_oid(element, true).await?,
@@ -208,7 +215,7 @@ impl PgConnection {
                     }))))
                 }
 
-                (Ok(TypType::Pseudo), Ok(TypCategory::Pseudo)) => {
+                (Ok(TypType::Pseudo), Some(Ok(TypCategory::Pseudo)) | None) => {
                     Ok(PgTypeInfo(PgType::Custom(Arc::new(PgCustomType {
                         kind: PgTypeKind::Pseudo,
                         name: name.into(),
@@ -216,15 +223,15 @@ impl PgConnection {
                     }))))
                 }
 
-                (Ok(TypType::Range), Ok(TypCategory::Range)) => {
+                (Ok(TypType::Range), Some(Ok(TypCategory::Range)) | None) => {
                     self.fetch_range_by_oid(oid, name).await
                 }
 
-                (Ok(TypType::Enum), Ok(TypCategory::Enum)) => {
+                (Ok(TypType::Enum), Some(Ok(TypCategory::Enum)) | None) => {
                     self.fetch_enum_by_oid(oid, name).await
                 }
 
-                (Ok(TypType::Composite), Ok(TypCategory::Composite)) => {
+                (Ok(TypType::Composite), Some(Ok(TypCategory::Composite)) | None) => {
                     self.fetch_composite_by_oid(oid, relation_id, name).await
                 }
 
