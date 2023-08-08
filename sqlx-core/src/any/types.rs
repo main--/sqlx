@@ -135,6 +135,12 @@ impl_any_type!(chrono::DateTime<chrono::offset::Local>);
     not(feature = "mssql")
 ))]
 impl_any_type!(crate::types::Json<T>, T);
+#[cfg(all(
+    feature = "uuid",
+    any(feature = "sqlite", feature = "postgres", feature = "mysql"),
+    not(feature = "mssql")
+))]
+impl_any_type!(crate::types::Uuid);
 
 // Encode
 #[cfg(all(
@@ -173,6 +179,12 @@ impl_any_encode!(chrono::DateTime<chrono::offset::Local>);
     not(feature = "mssql")
 ))]
 impl_any_encode!(crate::types::Json<T>, T);
+#[cfg(all(
+    feature = "uuid",
+    any(feature = "sqlite", feature = "postgres", feature = "mysql"),
+    not(feature = "mssql")
+))]
+impl_any_encode!(crate::types::Uuid);
 
 // Decode
 #[cfg(all(
@@ -211,3 +223,9 @@ impl_any_decode!(chrono::DateTime<chrono::offset::Local>);
     not(feature = "mssql")
 ))]
 impl_any_decode!(crate::types::Json<T>, T);
+#[cfg(all(
+    feature = "uuid",
+    any(feature = "sqlite", feature = "postgres", feature = "mysql"),
+    not(feature = "mssql")
+))]
+impl_any_decode!(crate::types::Uuid);
