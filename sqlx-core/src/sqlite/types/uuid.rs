@@ -7,6 +7,7 @@ use crate::types::Type;
 use std::borrow::Cow;
 use uuid::{fmt::Hyphenated, Uuid};
 
+/*
 impl Type<Sqlite> for Uuid {
     fn type_info() -> SqliteTypeInfo {
         SqliteTypeInfo(DataType::Blob)
@@ -33,6 +34,33 @@ impl Decode<'_, Sqlite> for Uuid {
         Uuid::from_slice(value.blob()).map_err(Into::into)
     }
 }
+
+DW Patch: treat raw Uuid as Hyphenated for our purposes
+*/
+impl Type<Sqlite> for Uuid {
+    fn type_info() -> SqliteTypeInfo {
+        SqliteTypeInfo(DataType::Text)
+    }
+}
+
+impl<'q> Encode<'q, Sqlite> for Uuid {
+    fn encode_by_ref(&self, args: &mut Vec<SqliteArgumentValue<'q>>) -> IsNull {
+        args.push(SqliteArgumentValue::Text(Cow::Owned(self.hyphenated().to_string())));
+
+        IsNull::No
+    }
+}
+
+impl Decode<'_, Sqlite> for Uuid {
+    fn decode(value: SqliteValueRef<'_>) -> Result<Self, BoxDynError> {
+        let uuid: Result<Uuid, BoxDynError> =
+        Uuid::parse_str(&value.text().map(ToOwned::to_owned)?).map_err(Into::into);
+
+        Ok(uuid?)
+    }
+}
+
+
 
 impl Type<Sqlite> for Hyphenated {
     fn type_info() -> SqliteTypeInfo {
